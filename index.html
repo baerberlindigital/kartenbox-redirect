@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Visitenkartenbox — BNI Berlin Bär</title>
+<style>
+html,body{width:100%;max-width:100%;margin:0;padding:0;overflow-x:hidden;}
+.app{width:100%;max-width:100vw;overflow-x:hidden;margin:0 auto;}
+:root{--red:#CF2030;--grey:#64666A;--grey-light:#C8C8C8;--bg:#F2F2F2;--ink:#1c1c1e;--white:#FFFFFF;}
+*,*::before,*::after{box-sizing:border-box;max-width:100%;}
+body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased;}
+header{background:var(--red);color:var(--white);padding:32px 20px 24px;}
+.header-inner{max-width:680px;margin:0 auto;}
+header h1{font-size:22px;font-weight:700;margin:0 0 4px;letter-spacing:-0.01em;color:var(--white);}
+header p{margin:0;color:rgba(255,255,255,0.85);font-size:14px;}
+.search-wrap{max-width:680px;margin:20px auto 0;padding:0 20px;}
+.search{width:100%;padding:11px 14px;border-radius:10px;border:1px solid var(--grey-light);background:var(--white);font-size:16px;color:var(--ink);outline:none;}
+.search:focus{border-color:var(--red);}
+main{max-width:680px;margin:0 auto;padding:0 20px 60px;}
+.count{display:flex;flex-wrap:wrap;justify-content:space-between;column-gap:12px;row-gap:2px;font-size:12px;color:var(--grey);margin:18px 2px 6px;}
+.count span{white-space:normal;overflow-wrap:break-word;}
+ul.list{list-style:none;margin:0;padding:0;background:var(--white);border-radius:12px;overflow:hidden;border:1px solid #E5E5E7;}
+li.row{display:flex;align-items:center;gap:14px;padding:14px 16px;border-bottom:1px solid #EEEEEF;}
+li.row:last-child{border-bottom:none;}
+.avatar{flex:0 0 auto;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:15px;color:var(--white);}
+.info{flex:1 1 auto;min-width:0;}
+.info .name{font-weight:600;font-size:15px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.info .branche{font-size:13px;color:var(--grey);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
+.save-btn{flex:0 0 auto;width:36px;height:36px;border-radius:50%;border:1px solid var(--grey-light);background:var(--white);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:border-color .15s ease,background .15s ease;}
+.save-btn svg{width:16px;height:16px;stroke:var(--grey);transition:stroke .15s ease;}
+.save-btn:hover{border-color:var(--red);background:#fdf2f3;}
+.save-btn:hover svg{stroke:var(--red);}
+.save-btn.done{border-color:var(--red);background:var(--red);}
+.save-btn.done svg{stroke:var(--white);}
+.save-btn.loading{opacity:0.5;pointer-events:none;}
+.empty{text-align:center;color:var(--grey);font-size:14px;padding:40px 0;}
+.status-msg{text-align:center;color:var(--grey);font-size:13px;padding:30px 0;}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+<div class="header-inner">
+<h1>Visitenkartenbox</h1>
+<p>BNI Berlin Bär — Kontakt direkt aufs Handy speichern</p>
+</div>
+</header>
+<div class="search-wrap">
+<input class="search" type="text" id="search" placeholder="Name oder Branche suchen…">
+</div>
+<main>
+<div class="count" id="count"></div>
+<ul class="list" id="list"><li class="status-msg">Lade Mitgliederliste…</li></ul>
+</main>
+</div>
+<script>
+// Apps-Script-Endpunkt, der die Daten liefert (kein Google-Banner, weil wir
+// diese Adresse nur im Hintergrund per fetch abrufen, nie direkt navigieren).
+var API_URL = "https://script.google.com/macros/s/AKfycbynVB_utBn5dHKtvbql5ZRKSSW9nO6Rxdpr7LoQ25fOoZKx17BnpsxvT266Ii7T88q28A/exec";
+
+var members = [];
+var LAST_UPDATED = "";
+var AVATAR_COLOR = "#8a8d91";
+
+function colorFor(){ return AVATAR_COLOR; }
+function initials(v,n){ return ((v[0]||"")+(n[0]||"")).toUpperCase(); }
+function escapeVCard(str){ return (str||"").replace(/\\/g,"\\\\").replace(/\n/g,"\\n").replace(/([,;])/g,"\\$1"); }
+
+function fileSafe(str){
+  var map={"ä":"ae","ö":"oe","ü":"ue","Ä":"Ae","Ö":"Oe","Ü":"Ue","ß":"ss","é":"e","è":"e","à":"a","ñ":"n"};
+  return (str||"").replace(/[äöüÄÖÜßéèàñ]/g,function(c){return map[c]||c;}).replace(/[^a-zA-Z0-9_-]+/g,"_");
+}
+
+function downloadVCard(m,contact,btn){
+  var lines=["BEGIN:VCARD","VERSION:3.0",
+    "N;CHARSET=Windows-1252:"+escapeVCard(m.nachname)+";"+escapeVCard(m.vorname)+";;"+escapeVCard(m.titel)+";",
+    "FN;CHARSET=Windows-1252:"+(m.titel?escapeVCard(m.titel)+" ":"")+escapeVCard(m.vorname)+" "+escapeVCard(m.nachname)];
+  if(m.branche) lines.push("ORG;CHARSET=Windows-1252:"+escapeVCard(m.branche));
+  if(contact.telefon) lines.push("TEL;TYPE=WORK,VOICE:"+contact.telefon.replace(/\s+/g,""));
+  if(contact.mobil) lines.push("TEL;TYPE=CELL:"+contact.mobil.replace(/\s+/g,""));
+  if(contact.email) lines.push("EMAIL:"+contact.email);
+  lines.push("END:VCARD");
+
+  var content=lines.join("\r\n");
+  var bytes=new Uint8Array(content.length);
+  for(var ci=0; ci<content.length; ci++){ bytes[ci]=content.charCodeAt(ci)&0xFF; }
+  var blob=new Blob([bytes],{type:"text/x-vcard"});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement("a");
+  a.href=url; a.download=fileSafe(m.vorname)+"_"+fileSafe(m.nachname)+".vcf";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){URL.revokeObjectURL(url);},2000);
+
+  btn.classList.remove("loading");
+  btn.classList.add("done");
+  setTimeout(function(){btn.classList.remove("done");},1200);
+}
+
+function requestContact(m,btn){
+  if(btn.classList.contains("loading")) return;
+  btn.classList.add("loading");
+  fetch(API_URL+"?action=contact&idx="+m.idx)
+    .then(function(r){ return r.json(); })
+    .then(function(contact){
+      if(!contact){ btn.classList.remove("loading"); return; }
+      downloadVCard(m,contact,btn);
+    })
+    .catch(function(){
+      btn.classList.remove("loading");
+      alert("Kontakt konnte nicht geladen werden.");
+    });
+}
+
+function render(list){
+  var ul=document.getElementById("list");
+  var count=document.getElementById("count");
+  ul.innerHTML="";
+  if(!list.length){
+    ul.innerHTML='<li class="empty">Keine Treffer.</li>';
+    count.innerHTML="";
+    return;
+  }
+  count.innerHTML="<span>"+list.length+" Mitglieder</span>"+(LAST_UPDATED?"<span>zuletzt aktualisiert: "+LAST_UPDATED+"</span>":"");
+  list.forEach(function(m){
+    var li=document.createElement("li"); li.className="row";
+    var avatar=document.createElement("div"); avatar.className="avatar";
+    avatar.style.background=colorFor(); avatar.textContent=initials(m.vorname,m.nachname);
+    var info=document.createElement("div"); info.className="info";
+    info.innerHTML="<div class=\"name\">"+(m.titel?m.titel+" ":"")+m.vorname+" "+m.nachname+"</div><div class=\"branche\">"+m.branche+"</div>";
+    var btn=document.createElement("button"); btn.className="save-btn"; btn.title="Als Kontakt speichern";
+    btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13"/><path d="M7 12l5 5 5-5"/><path d="M5 21h14"/></svg>';
+    btn.addEventListener("click",function(){ requestContact(m,btn); });
+    li.appendChild(avatar); li.appendChild(info); li.appendChild(btn);
+    ul.appendChild(li);
+  });
+}
+
+document.getElementById("search").addEventListener("input",function(){
+  var q=this.value.trim().toLowerCase();
+  if(!q){ render(members); return; }
+  render(members.filter(function(m){
+    return (m.vorname+" "+m.nachname).toLowerCase().indexOf(q)>-1 || m.branche.toLowerCase().indexOf(q)>-1;
+  }));
+});
+
+fetch(API_URL)
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    members = data.members;
+    LAST_UPDATED = data.lastUpdated;
+    render(members);
+  })
+  .catch(function(){
+    document.getElementById("list").innerHTML = '<li class="status-msg">Daten konnten nicht geladen werden.</li>';
+  });
+
+setInterval(function(){ location.reload(); }, 60 * 60 * 1000);
+</script>
+</body>
+</html>
