@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Weiterleitung …</title>
+<style>
+  body{
+    margin:0;
+    height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:#64666A;
+    background:#F2F2F2;
+  }
+</style>
+</head>
+<body>
+<p id="status">Weiterleitung …</p>
+<script>
+  // Ziel-URL wird bei jedem Aufruf frisch aus dem Apps-Script-Endpunkt geladen.
+  var SOURCE_URL = "https://script.google.com/macros/s/AKfycby-EFIhcjC-bQ0HUC-KElO3p35PuFoB02m2jCUCWH_rog1Iv1HkIL31K6G08TdEeTuGnA/exec";
+
+  fetch(SOURCE_URL)
+    .then(function (r) { return r.text(); })
+    .then(function (url) {
+      url = url.trim();
+      if (!url) {
+        document.getElementById("status").textContent = "Kein Ziel hinterlegt.";
+        return;
+      }
+      window.location.replace(url);
+    })
+    .catch(function () {
+      document.getElementById("status").textContent = "Weiterleitung fehlgeschlagen.";
+    });
+</script>
+</body>
+</html>
